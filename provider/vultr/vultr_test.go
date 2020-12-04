@@ -158,8 +158,10 @@ func TestVultrProvider_ApplyChanges(t *testing.T) {
 		{DNSName: "ttl.test.com", Targets: endpoint.Targets{"target"}, RecordTTL: 100},
 	}
 
+	changes.UpdateOld = []*endpoint.Endpoint{{DNSName: "test.test.com", Targets: endpoint.Targets{"192.168.1.1"}, RecordType: "A", RecordTTL: 100}}
 	changes.UpdateNew = []*endpoint.Endpoint{{DNSName: "test.test.com", Targets: endpoint.Targets{"target-new"}, RecordType: "A", RecordTTL: 100}}
-	changes.Delete = []*endpoint.Endpoint{{DNSName: "test.test.com", Targets: endpoint.Targets{"target"}, RecordType: "A"}}
+
+	changes.Delete = []*endpoint.Endpoint{{DNSName: "test.test.com", Targets: endpoint.Targets{"192.168.1.1"}, RecordType: "A"}}
 	err := provider.ApplyChanges(context.Background(), changes)
 	if err != nil {
 		t.Errorf("should not fail, %s", err)
@@ -181,6 +183,7 @@ func TestVultrProvider_getRecordID(t *testing.T) {
 		RecordID: 123,
 		Type:     "A",
 		Name:     "test.test.com",
+		Data:     "192.168.1.1",
 	}
 	id, err := provider.getRecordID(context.Background(), "test.com", record)
 	if err != nil {

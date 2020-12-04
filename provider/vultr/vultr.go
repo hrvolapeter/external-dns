@@ -98,6 +98,8 @@ func (p *VultrProvider) Records(ctx context.Context) ([]*endpoint.Endpoint, erro
 			return nil, err
 		}
 
+		var endpointMap = make(map[string]*endpoint.Endpoint)
+
 		for _, r := range records {
 			if provider.SupportedRecordType(r.Type) {
 				name := fmt.Sprintf("%s.%s", r.Name, zone.Domain)
@@ -108,8 +110,14 @@ func (p *VultrProvider) Records(ctx context.Context) ([]*endpoint.Endpoint, erro
 					name = zone.Domain
 				}
 
-				endPointTTL := endpoint.NewEndpointWithTTL(name, r.Type, endpoint.TTL(r.TTL), r.Data)
-				endpoints = append(endpoints, endPointTTL)
+				mapKey := fmt.Sprintf("%s_%s", name, r.Type)
+				if foundEndpoint, ok := endpointMap[mapKey]; ok {
+					foundEndpoint.Targets = append(foundEndpoint.Targets, r.Data)
+				} else {
+					endPointTTL := endpoint.NewEndpointWithTTL(name, r.Type, endpoint.TTL(r.TTL), r.Data)
+					endpoints = append(endpoints, endPointTTL)
+					endpointMap[mapKey] = endPointTTL
+				}
 			}
 		}
 	}
@@ -212,7 +220,7 @@ func (p *VultrProvider) ApplyChanges(ctx context.Context, changes *plan.Changes)
 	combinedChanges := make([]*VultrChanges, 0, len(changes.Create)+len(changes.UpdateNew)+len(changes.Delete))
 
 	combinedChanges = append(combinedChanges, newVultrChanges(vultrCreate, changes.Create)...)
-	combinedChanges = append(combinedChanges, newVultrChanges(vultrUpdate, changes.UpdateNew)...)
+	combinedChanges = append(combinedChanges, newVultrUpdateChanges(changes.UpdateOld, changes.UpdateNew)...)
 	combinedChanges = append(combinedChanges, newVultrChanges(vultrDelete, changes.Delete)...)
 
 	return p.submitChanges(ctx, combinedChanges)
@@ -226,16 +234,75 @@ func newVultrChanges(action string, endpoints []*endpoint.Endpoint) []*VultrChan
 			ttl = int(e.RecordTTL)
 		}
 
-		change := &VultrChanges{
-			Action: action,
-			ResourceRecordSet: govultr.DNSRecord{
-				Type: e.RecordType,
-				Name: e.DNSName,
-				Data: e.Targets[0],
-				TTL:  ttl,
-			},
+		for _, target := range e.Targets {
+			change := &VultrChanges{
+				Action: action,
+				ResourceRecordSet: govultr.DNSRecord{
+					Type: e.RecordType,
+					Name: e.DNSName,
+					Data: target,
+					TTL:  ttl,
+				},
+			}
+			changes = append(changes, change)
 		}
-		changes = append(changes, change)
+	}
+	return changes
+}
+
+func newVultrUpdateChanges(oldEndpoints, newEndpoints []*endpoint.Endpoint) []*VultrChanges {
+	if len(oldEndpoints) != len(newEndpoints) {
+		log.Fatalf("Endpoint list size desynced: %v %v", len(oldEndpoints), len(newEndpoints))
+	}
+
+	changes := make([]*VultrChanges, 0, len(oldEndpoints))
+	for idx, oldE := range oldEndpoints {
+		newE := newEndpoints[idx]
+		if oldE.DNSName != newE.DNSName {
+			log.Fatalf("Endpoint names desynced: %v %v", oldE.DNSName, newE.DNSName)
+		}
+
+		oldDatas := make(map[string]struct{})
+		for _, target := range oldE.Targets {
+			oldDatas[target] = struct{}{}
+		}
+
+		ttl := vultrTTL
+		if newE.RecordTTL.IsConfigured() {
+			ttl = int(newE.RecordTTL)
+		}
+
+		for _, target := range newE.Targets {
+			action := vultrCreate
+			if _, ok := oldDatas[target]; ok {
+				action = vultrUpdate
+				delete(oldDatas, target)
+			}
+
+			change := &VultrChanges{
+				Action: action,
+				ResourceRecordSet: govultr.DNSRecord{
+					Type: newE.RecordType,
+					Name: newE.DNSName,
+					Data: target,
+					TTL:  ttl,
+				},
+			}
+			changes = append(changes, change)
+		}
+
+		for deletedTarget := range oldDatas {
+			change := &VultrChanges{
+				Action: vultrDelete,
+				ResourceRecordSet: govultr.DNSRecord{
+					Type: newE.RecordType,
+					Name: newE.DNSName,
+					Data: deletedTarget,
+					TTL:  ttl,
+				},
+			}
+			changes = append(changes, change)
+		}
 	}
 	return changes
 }
@@ -272,7 +339,7 @@ func (p *VultrProvider) getRecordID(ctx context.Context, zone string, record gov
 			strippedName = ""
 		}
 
-		if r.Name == strippedName && r.Type == record.Type {
+		if r.Name == strippedName && r.Type == record.Type && r.Data == record.Data {
 			return r.RecordID, nil
 		}
 	}
