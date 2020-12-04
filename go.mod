@@ -51,7 +51,7 @@ require (
 	github.com/transip/gotransip v5.8.2+incompatible
 	github.com/ultradns/ultradns-sdk-go v0.0.0-20200616202852-e62052662f60
 	github.com/vinyldns/go-vinyldns v0.0.0-20200211145900-fe8a3d82e556
-	github.com/vultr/govultr v0.4.2
+	github.com/vultr/govultr v1.1.1
 	go.etcd.io/etcd v0.5.0-alpha.5.0.20200401174654-e694b7bb0875
 	go.uber.org/ratelimit v0.1.0
 	golang.org/x/net v0.0.0-20200324143707-d3edc9973b7e
