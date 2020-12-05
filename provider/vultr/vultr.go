@@ -264,6 +264,7 @@ func newVultrUpdateChanges(oldEndpoints, newEndpoints []*endpoint.Endpoint) []*V
 
 		oldDatas := make(map[string]struct{})
 		for _, target := range oldE.Targets {
+			log.Println("VULTR: old endpoint", oldE.DNSName, "target", target)
 			oldDatas[target] = struct{}{}
 		}
 
@@ -277,7 +278,9 @@ func newVultrUpdateChanges(oldEndpoints, newEndpoints []*endpoint.Endpoint) []*V
 			if _, ok := oldDatas[target]; ok {
 				action = vultrUpdate
 				delete(oldDatas, target)
+				log.Println("VULTR: new endpoint", newE.DNSName, "target", target, "already exists")
 			}
+			log.Println("VULTR: new endpoint", newE.DNSName, "target", target, "action", action)
 
 			change := &VultrChanges{
 				Action: action,
@@ -292,6 +295,7 @@ func newVultrUpdateChanges(oldEndpoints, newEndpoints []*endpoint.Endpoint) []*V
 		}
 
 		for deletedTarget := range oldDatas {
+			log.Println("VULTR: old endpoint", newE.DNSName, "target", deletedTarget, "is no more")
 			change := &VultrChanges{
 				Action: vultrDelete,
 				ResourceRecordSet: govultr.DNSRecord{
